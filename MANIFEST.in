@@ -1,0 +1,9 @@
+# Documentation
+include README.rst
+include CHANGELOG.md
+include LICENSE.txt
+recursive-include docs *
+
+# Example data sets
+recursive-include example_data *
+

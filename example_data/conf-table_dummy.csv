@@ -1,0 +1,8 @@
+from,to,cost
+a,kd,0.7
+a,ba,0.7
+a,ab,0.5
+a,c,0.2
+gh,I,0.8
+kg,bd,0.9
+kg,ba,0.75

@@ -1,0 +1,14 @@
+source,target,distance,d_computed
+a,aba,1.5,1.5
+abal,ababl,0.5,0.5
+abal,abbal,0.5,0.5
+agal,agbal,0.7,0.7
+abal,kdbcl,0.9,0.9
+abal,cbkdl,0.9,0.9
+aba,a,2.0,2
+a,abk,1.5,1.5
+a,abab,2.5,2.5
+ghbak,ibak,0.8,0.8
+bakgh,baki,0.8,0.8
+akg,abd,0.9,0.9
+kgal,baal,0.75,0.75
