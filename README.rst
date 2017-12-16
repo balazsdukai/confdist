@@ -29,7 +29,7 @@ Install and run
 
     ``$ pip3 install git+https://github.com/balazsdukai/confdist``
 
--   Run *batch3dfier* from the command line:
+-   Run *confdist* from the command line:
 
     ``$ confdist -c /path/confusion_table.csv -i /path/word_pairs_table.csv -o /path/result_table.csv -l no``
 
