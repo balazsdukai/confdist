@@ -73,31 +73,58 @@ def read_words(csv_in, as_list=False):
         return out
 
 
-def strip_accents_lower(s):
+def strip_accents_lower(s, lower_case=True):
     g = ''.join(c for c in unicodedata.normalize('NFD', s)
                   if unicodedata.category(c) != 'Mn')
-    g = g.lower()
+    if lower_case:
+        g = g.lower()
+    else:
+        pass
     # g.replace() does not alter g itself, it just returns the modified g
     g = g.replace(" ", "")
     return g
 
 
-def adapted_damerau_levenshtein_distance(string1, string2, combinations):
-    """
-    Results are rounded up to 2 decimals.
+def adapted_damerau_levenshtein_distance(string1, string2, combinations, 
+                                         rounding,
+                                         lower_case,
+                                         cost_substitution, 
+                                         cost_deletion, 
+                                         cost_insertion
+                                         ):
+    """Compute the transcriptional edit distanc bewteen a pair of words.
+    
+    Parameters
+    ----------
+    string1 : str
+        Source string
+    string2 : str
+        Target string
+    combinations : dict
+        Confusion table and costs
+    rounding : int
+        Number of decimal points for rounding of computed distance (default=2)
+    lower_case : bool
+        Convert source and target to lower case or leave as it is? (default=True)
+    cost_substitution : float
+        Cost of substitution (default=1.0)
+    cost_deletion : float
+        Cost of deletion (default=1.0)
+    cost_insertion : float
+        Cost of insertion (default=1.0)
     """
     # for the case of scriptio continua, merge words
-    s1 = strip_accents_lower(string1)
-    s2 = strip_accents_lower(string2)
+    s1 = strip_accents_lower(string1, lower_case)
+    s2 = strip_accents_lower(string2, lower_case)
     logging.debug("source: %s, target: %s", string1, string2)
     d = {}
     lenstr1 = len(s1)
     lenstr2 = len(s2)
     
-    cost_equal = 0
-    cost_deletion = 1
-    cost_insertion = 1
-    cost_substitution = 1
+#     cost_equal = 0
+#     cost_deletion = 1
+#     cost_insertion = 1
+#     cost_substitution = 1
     cost_transposition = 1
 
     for i in range(-1, lenstr1 + 1):
@@ -254,12 +281,18 @@ def adapted_damerau_levenshtein_distance(string1, string2, combinations):
                 else:
                     logging.error("unexpected path: i != 0 and j != 0")
                     pass
-    distance = round(d[lenstr1 - 1, lenstr2 - 1], 2)
+    distance = round(d[lenstr1 - 1, lenstr2 - 1], rounding)
     logging.debug("distance is %s \n", distance)
     return distance
 
 
-def compare_words(word_list, combinations_dict, verbose=True):
+def compare_words(word_list, combinations_dict, 
+                  verbose, 
+                  rounding,
+                  lower_case,
+                  cost_substitution, 
+                  cost_deletion, 
+                  cost_insertion):
     """Takes a list of dictionaries and compares the words.
     
     The each dictionary must have at least the following keys:
@@ -276,7 +309,12 @@ def compare_words(word_list, combinations_dict, verbose=True):
     for pair in sample:
         source = pair["source"]
         target = pair["target"]
-        pair["d_computed"] = adapted_damerau_levenshtein_distance(source, target, combinations_dict)
+        pair["d_computed"] = adapted_damerau_levenshtein_distance(source, target, combinations_dict, 
+                                                                rounding=rounding,
+                                                                lower_case=lower_case,
+                                                                cost_substitution=cost_substitution, 
+                                                                cost_deletion=cost_deletion, 
+                                                                cost_insertion=cost_insertion)
         if verbose:
             try:
                 diff = abs(pair["d_computed"] - pair["distance"]) < 0.0001
@@ -290,7 +328,12 @@ def compare_words(word_list, combinations_dict, verbose=True):
     return sample
 
 
-def distance_matrix(word_list, combinations_dict):
+def distance_matrix(word_list, combinations_dict, 
+                    rounding,
+                    lower_case,
+                    cost_substitution, 
+                    cost_deletion, 
+                    cost_insertion):
     """Compares a list of words to each other. Returns a pandas data frame.
     
     https://stackoverflow.com/questions/37428973/string-distance-matrix-in-python
@@ -304,7 +347,12 @@ def distance_matrix(word_list, combinations_dict):
         for j in range(0, len(List2)):
             Matrix[i, j] = adapted_damerau_levenshtein_distance(List1[i],
                                                              List2[j],
-                                                             combinations_dict)
+                                                             combinations_dict,
+                                                             rounding=rounding,
+                                                             lower_case=lower_case,
+                                                             cost_substitution=cost_substitution, 
+                                                             cost_deletion=cost_deletion, 
+                                                             cost_insertion=cost_insertion)
     return Matrix
 
 
@@ -325,43 +373,97 @@ def write_results(res, file_out):
 def main():
     parser = argparse.ArgumentParser(description="Compute transcriptional edit distance between pairs of words.")
     parser.add_argument(
-        "-c",
+        "confusion_table",
         help="The letter confusion table (CSV format).")
     parser.add_argument(
-        "-i",
+        "input_file",
         help="Input table (CSV format).")
     parser.add_argument(
-        "-o",
+        "output_file",
         help="Output table (CSV format).")
     parser.add_argument(
         "-l",
-        help="Compare all words in the source column of input table to each other? (yes/no)",
+        help="Compare all words in the source column of input table to each other? (yes/no) (default=no)",
         default="no",
+        type=str)
+    parser.add_argument(
+        "-rounding",
+        help="Number of decimal points for rounding of computed distance (default=2)",
+        default=2,
+        type=int)
+    parser.add_argument(
+        "-lower_case",
+        help="Convert source and target to lower case or leave as it is? (yes/no) (default=yes)",
+        default="yes",
+        type=str)
+    parser.add_argument(
+        "-cs",
+        help="Cost of substitution (default=1.0)",
+        default=1.0,
+        type=float)
+    parser.add_argument(
+        "-cd",
+        help="Cost of deletion (default=1.0)",
+        default=1.0,
+        type=float)
+    parser.add_argument(
+        "-ci",
+        help="Cost of insertion (default=1.0)",
+        default=1.0,
+        type=float)
+    parser.add_argument(
+        "-v",
+        help="Verbose mode (yes/no) (default=yes)",
+        default="yes",
         type=str)
 
     args = parser.parse_args()
     args_in = {}
-    args_in['conf_table'] = os.path.abspath(args.c)
-    args_in['file_in'] = os.path.abspath(args.i)
-    args_in['file_out'] = os.path.abspath(args.o)
+    args_in['conf_table'] = os.path.abspath(args.confusion_table)
+    args_in['file_in'] = os.path.abspath(args.input_file)
+    args_in['file_out'] = os.path.abspath(args.output_file)
+    args_in['rounding'] = args.rounding
+    args_in['cs'] = args.cs
+    args_in['cd'] = args.cd
+    args_in['ci'] = args.ci
     if "y" in args.l.lower():
         args_in['as_list'] = True
     else:
         args_in['as_list'] = False
+    if "y" in args.v.lower():
+        args_in['verbose'] = True
+    else:
+        args_in['verbose'] = False
+    if "y" in args.lower_case.lower():
+        args_in['lower'] = True
+    else:
+        args_in['lower'] = False
+
 
     word_list = read_words(args_in['file_in'], as_list=args_in['as_list'])
     conf_table = read_combinations(args_in['conf_table'])
     
     if args_in['as_list']:
         print("Computing distances...")
-        m = distance_matrix(word_list, conf_table)
+        m = distance_matrix(word_list, conf_table, 
+                            rounding=args_in['rounding'], 
+                            lower_case=args_in['lower'],
+                            cost_deletion=args_in['cd'], 
+                            cost_insertion=args_in['ci'],
+                            cost_substitution=args_in['cs'])
         df = pd.DataFrame(m, index=word_list, columns=word_list)
         print("Writing file...")
         df.to_csv(args_in['file_out'], index=True, header=True, sep=',', 
                   encoding='utf-8')
     else:
         print("Computing distances...")
-        a = compare_words(word_list, conf_table, verbose=False)
+        a = compare_words(word_list, conf_table, 
+                            verbose=args_in['verbose'], 
+                          rounding=args_in['rounding'], 
+                          lower_case=args_in['lower'],
+                          cost_deletion=args_in['cd'], 
+                          cost_insertion=args_in['ci'],
+                          cost_substitution=args_in['cs'])
         print("Writing file...")
         write_results(a, args_in['file_out'])
 
