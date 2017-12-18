@@ -37,7 +37,7 @@ setup(name='confdist',
     python_requires='>=3',
 #    keywords='GIS 3DGIS CityGML LiDAR',
     entry_points={
-        'console_scripts': ['confdist = confdist.confdistapp:main']
+        'console_scripts': ['confdist = confdist.__main__:main']
     },
     include_package_data=True,
     zip_safe=False
