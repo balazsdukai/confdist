@@ -1,0 +1,14 @@
+source,target,distance,explanation
+a,aba,1.5,"divide a-ab, insert a"
+abal,ababl,0.5,divide a-ab
+abal,abbal,0.5,divide the first a-ab
+agal,agbal,0.7,divide a-ba
+abal,kdbcl,0.9,"divide a-kd, substitute a-c"
+abal,cbkdl,0.9,"substitute a-c, divide a-kd"
+aba,a,2,remove two letters
+a,abk,1.5,"divide a-ab, insert k"
+a,abab,2.5,"divide a-ab, insert a, insert b"
+ghbak,ibak,0.8,contract gh-i
+bakgh,baki,0.8,contract gh-i
+akg,abd,0.9,complex substitution kg-bd
+kgal,baal,0.75,complex substitution kg-ba
