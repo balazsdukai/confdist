@@ -59,6 +59,8 @@ Example data sets are in ``confdist/example_data``. Test them as:
 Input
 -----
 
+**ALL INPUT MUST BE ENCODED AS UTF-8**
+
 **confusion_table.csv**
 
     A CSV table containing the confusion distances. It must have the following columns:
