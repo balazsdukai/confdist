@@ -41,12 +41,14 @@ Install and run
                             to each other? (yes/no) (default=no)
     -rounding ROUNDING      Number of decimal points for rounding of computed
                             distance (default=2)
-    -lower_case LOWER_CASE  Convert source and target to lower case or leave as it
-                            is? (yes/no) (default=yes)
+    -case CASE              Convert source and target to lower/upper case, or leave
+                            as original? (lower/upper/original) (default=lower)
     -cs CS                  Cost of substitution (default=1.0)
     -cd CD                  Cost of deletion (default=1.0)
     -ci CI                  Cost of insertion (default=1.0)
     -v V                    Verbose mode (yes/no) (default=yes)
+
+Note that regardless of the ``-case`` parameter, the results are output as the original (input).
 
 -   Get help:
 

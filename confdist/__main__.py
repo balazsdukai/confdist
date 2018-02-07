@@ -22,7 +22,7 @@ logging.basicConfig(filename='confdist.log',
 #                     format='%(levelname)s - %(message)s')
 
 # read combinations from file
-def read_combinations(csv_in):
+def read_combinations(csv_in, case):
     """Reads the combinations and their cost from a CSV file and returns a dictionary
     
     The input CSV must have 3 columns in the following order:
@@ -37,8 +37,15 @@ def read_combinations(csv_in):
         reader = csv.reader(f_in, delimiter=',', quotechar='"')
         next(reader) # skip the header
         for row in reader:
-            f = row[0].lower() # from
-            to = row[1].lower()
+            if case == "lower":
+                f = row[0].lower() # from
+                to = row[1].lower()
+            elif case == "upper":
+                f = row[0].upper() # from
+                to = row[1].upper()
+            else:
+                f = row[0]
+                to = row[1]
             cost = float(row[2].replace(',','.')) # replace decimal mark from , to . but this wont work in case of 1,200.30
             key = '-'.join([f, to])
             combinations[key] = cost
@@ -73,11 +80,13 @@ def read_words(csv_in, as_list=False):
         return out
 
 
-def strip_accents_lower(s, lower_case=True):
+def strip_accents_lower(s, case):
     g = ''.join(c for c in unicodedata.normalize('NFD', s)
                   if unicodedata.category(c) != 'Mn')
-    if lower_case:
+    if case == "lower":
         g = g.lower()
+    elif case == "upper":
+        g = g.upper()
     else:
         pass
     # g.replace() does not alter g itself, it just returns the modified g
@@ -87,7 +96,7 @@ def strip_accents_lower(s, lower_case=True):
 
 def adapted_damerau_levenshtein_distance(string1, string2, combinations, 
                                          rounding,
-                                         lower_case,
+                                         case,
                                          cost_substitution, 
                                          cost_deletion, 
                                          cost_insertion
@@ -104,8 +113,8 @@ def adapted_damerau_levenshtein_distance(string1, string2, combinations,
         Confusion table and costs
     rounding : int
         Number of decimal points for rounding of computed distance (default=2)
-    lower_case : bool
-        Convert source and target to lower case or leave as it is? (default=True)
+    case : string
+        Convert source and target to lower/upper case?
     cost_substitution : float
         Cost of substitution (default=1.0)
     cost_deletion : float
@@ -114,8 +123,8 @@ def adapted_damerau_levenshtein_distance(string1, string2, combinations,
         Cost of insertion (default=1.0)
     """
     # for the case of scriptio continua, merge words
-    s1 = strip_accents_lower(string1, lower_case)
-    s2 = strip_accents_lower(string2, lower_case)
+    s1 = strip_accents_lower(string1, case)
+    s2 = strip_accents_lower(string2, case)
     logging.debug("source: %s, target: %s", string1, string2)
     d = {}
     lenstr1 = len(s1)
@@ -289,7 +298,7 @@ def adapted_damerau_levenshtein_distance(string1, string2, combinations,
 def compare_words(word_list, combinations_dict, 
                   verbose, 
                   rounding,
-                  lower_case,
+                  case,
                   cost_substitution, 
                   cost_deletion, 
                   cost_insertion):
@@ -311,7 +320,7 @@ def compare_words(word_list, combinations_dict,
         target = pair["target"]
         pair["d_computed"] = adapted_damerau_levenshtein_distance(source, target, combinations_dict, 
                                                                 rounding=rounding,
-                                                                lower_case=lower_case,
+                                                                case=case,
                                                                 cost_substitution=cost_substitution, 
                                                                 cost_deletion=cost_deletion, 
                                                                 cost_insertion=cost_insertion)
@@ -330,7 +339,7 @@ def compare_words(word_list, combinations_dict,
 
 def distance_matrix(word_list, combinations_dict, 
                     rounding,
-                    lower_case,
+                    case,
                     cost_substitution, 
                     cost_deletion, 
                     cost_insertion):
@@ -349,7 +358,7 @@ def distance_matrix(word_list, combinations_dict,
                                                              List2[j],
                                                              combinations_dict,
                                                              rounding=rounding,
-                                                             lower_case=lower_case,
+                                                             case=case,
                                                              cost_substitution=cost_substitution, 
                                                              cost_deletion=cost_deletion, 
                                                              cost_insertion=cost_insertion)
@@ -392,9 +401,9 @@ def main():
         default=2,
         type=int)
     parser.add_argument(
-        "-lower_case",
-        help="Convert source and target to lower case or leave as it is? (yes/no) (default=yes)",
-        default="yes",
+        "-case",
+        help="Convert source and target to lower/upper case, or leave as original? (lower/upper/original) (default=lower)",
+        default="lower",
         type=str)
     parser.add_argument(
         "-cs",
@@ -426,6 +435,7 @@ def main():
     args_in['cs'] = args.cs
     args_in['cd'] = args.cd
     args_in['ci'] = args.ci
+    args_in['case'] = args.case.lower()
     if "y" in args.l.lower():
         args_in['as_list'] = True
     else:
@@ -434,20 +444,16 @@ def main():
         args_in['verbose'] = True
     else:
         args_in['verbose'] = False
-    if "y" in args.lower_case.lower():
-        args_in['lower'] = True
-    else:
-        args_in['lower'] = False
 
 
     word_list = read_words(args_in['file_in'], as_list=args_in['as_list'])
-    conf_table = read_combinations(args_in['conf_table'])
+    conf_table = read_combinations(args_in['conf_table'], args_in['case'])
     
     if args_in['as_list']:
         print("Computing distances...")
         m = distance_matrix(word_list, conf_table, 
                             rounding=args_in['rounding'], 
-                            lower_case=args_in['lower'],
+                            case=args_in['case'],
                             cost_deletion=args_in['cd'], 
                             cost_insertion=args_in['ci'],
                             cost_substitution=args_in['cs'])
@@ -460,7 +466,7 @@ def main():
         a = compare_words(word_list, conf_table, 
                             verbose=args_in['verbose'], 
                           rounding=args_in['rounding'], 
-                          lower_case=args_in['lower'],
+                          case=args_in['case'],
                           cost_deletion=args_in['cd'], 
                           cost_insertion=args_in['ci'],
                           cost_substitution=args_in['cs'])

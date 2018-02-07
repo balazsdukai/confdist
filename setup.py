@@ -4,7 +4,7 @@
 from setuptools import setup
 
 setup(name='confdist',
-    version='0.1.1',
+    version='0.1.2',
     description='Compute transcriptional edit distance, or confusion distance, between pairs of words.',
     url='https://github.com/balazsdukai/confdist',
     author='Vincent van Altena, Balázs Dukai',
