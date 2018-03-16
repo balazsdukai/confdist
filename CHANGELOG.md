@@ -6,9 +6,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.1.3] - 2018-03-16
 ### Added
-+ Initial release
++ First release
 
 
-[Unreleased]: https://github.com/balazsdukai/confdist/tree/develop
+[Unreleased]: https://github.com/balazsdukai/confdist/tree/master
+[0.1.3]: https://github.com/balazsdukai/confdist/releases
 

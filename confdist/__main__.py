@@ -7,30 +7,21 @@ import os.path
 
 import csv
 import unicodedata
-import logging
 import argparse
 import numpy as np
 import pandas as pd
 
 
-# print log to screen
-logging.basicConfig(filename='confdist.log',
-                    filemode='w',
-                    level=logging.DEBUG, 
-                    format='%(levelname)s - %(message)s')
-# logging.basicConfig(level=logging.DEBUG, 
-#                     format='%(levelname)s - %(message)s')
 
-# read combinations from file
 def read_combinations(csv_in, case):
     """Reads the combinations and their cost from a CSV file and returns a dictionary
     
     The input CSV must have 3 columns in the following order:
     "from", "to", "cost"
     
-    All letters are cast to lowercase.
-    
-    csv_in: string of path to combinations CSV
+    Case of all letters can be casted to lowercase, UPPERCASE or can be left as oRIgiNAl.
+        
+        csv_in: string of path to combinations CSV
     """
     with open(csv_in, mode='r', encoding='utf-8') as f_in:
         combinations = {}
@@ -49,14 +40,15 @@ def read_combinations(csv_in, case):
             cost = float(row[2].replace(',','.')) # replace decimal mark from , to . but this wont work in case of 1,200.30
             key = '-'.join([f, to])
             combinations[key] = cost
-        return combinations
+            
+    return combinations
 
 
 def read_words(csv_in, as_list=False):
     """Reads word pairs into a dictionary or list suitable for compare_words()
     
-    The CSV must have at least "source" and "target" columns if as_list is 
-    False. If present, the "distance" column is read from the CSV. The 
+    The CSV must have at least "source" and "target" columns if as_list is
+    False. If present, the "distance" column is read from the CSV. The
     "distance" column hold the true distances, which are compared by
     compare_words() to the computed distances for validation.
     If as_list is True, only the "source" column is read into a list.
@@ -70,39 +62,51 @@ def read_words(csv_in, as_list=False):
         else:
             for row in reader:
                 try:
-                    d = {"source": row["source"], 
+                    d = {"source": row["source"],
                          "target": row["target"],
                          "distance": float(row["distance"])}
                 except KeyError:
-                    d = {"source": row["source"], 
+                    d = {"source": row["source"],
                          "target": row["target"]}
                 out.append(d)
         return out
 
 
 def strip_accents_lower(s, case):
+    """Strip all diacritics from strings and change the case of the letters to lowercase, UPPERCASE (optional).
+        
+    Stripping diacritics is important for best emulation of Greek Maiuscule text.
+    Case changing is of importance to best fit the provided confusion table.
+    """
     g = ''.join(c for c in unicodedata.normalize('NFD', s)
-                  if unicodedata.category(c) != 'Mn')
+                 if unicodedata.category(c) != 'Mn')
     if case == "lower":
         g = g.lower()
     elif case == "upper":
         g = g.upper()
     else:
         pass
-    # g.replace() does not alter g itself, it just returns the modified g
     g = g.replace(" ", "")
     return g
 
 
-def adapted_damerau_levenshtein_distance(string1, string2, combinations, 
-                                         rounding,
-                                         case,
-                                         cost_substitution, 
-                                         cost_deletion, 
-                                         cost_insertion
-                                         ):
-    """Compute the transcriptional edit distanc bewteen a pair of words.
+def confusion_distance(string1,
+                       string2,
+                       combinations,
+                       rounding,
+                       case,
+                       cost_substitution,
+                       cost_deletion,
+                       cost_insertion
+                      ):
+
+    """Compute the confusion distance between a pair of words which can occur in transcription of texts.
+        
+    This algoritm is an adaptation of an existing implementation of
+    the original algoritm by Levensthein.
     
+    The existing implementation: 
+   
     Parameters
     ----------
     string1 : str
@@ -122,246 +126,213 @@ def adapted_damerau_levenshtein_distance(string1, string2, combinations,
     cost_insertion : float
         Cost of insertion (default=1.0)
     """
+    
     # for the case of scriptio continua, merge words
     s1 = strip_accents_lower(string1, case)
     s2 = strip_accents_lower(string2, case)
-    logging.debug("source: %s, target: %s", string1, string2)
     d = {}
     lenstr1 = len(s1)
     lenstr2 = len(s2)
-    
-#     cost_equal = 0
-#     cost_deletion = 1
-#     cost_insertion = 1
-#     cost_substitution = 1
-    cost_transposition = 1
 
+    """ Create two virtual colums and two virtual rows
+        to enable the calculation of contractions, divisions
+        and explosions for first characters in either string. 
+    """
+
+    for i in range(-2, lenstr1 + 2):
+        d[(i, -2)] = i + 1
+    for j in range(-2, lenstr2 + 2):
+        d[(-2, j)] = j + 1
+    
     for i in range(-1, lenstr1 + 1):
         d[(i, -1)] = i + 1
     for j in range(-1, lenstr2 + 1):
         d[(-1, j)] = j + 1
+        
+    for i, li in enumerate(s1):      
+        for j, lj in enumerate(s2):
+
+            """ Set parameters to default values. These values will be used 
+                if the compared characters (see below) are not in the confusion 
+                table. Otherwise, they will be overwritten by the values for
+                the particular combinations in the confusion table. 
+            """
+
+            cost_equal = 0
+            cost_deletion = 1
+            cost_insertion = 1
+            cost_substitution = 1
+            cost_explosion = 3
+            cost_contraction = 3
+            cost_complex_substitution = 5
+            cost_transposition = 5
+            
+            """ If present, replace the default parameters
+                by the values in the confusion table. 
+            """
     
-    for i, li in enumerate(s1):
-        for j, lj in enumerate(s2): 
-            logging.debug('str1: %s str2: %s', s1[i], s2[j])
-            logging.debug("top: %s", d[(i - 1, j)])
-            logging.debug("diagonal %s", d[(i - 1, j - 1)])
-            logging.debug("left %s", d[(i, j - 1)])
-            
+            # for simple | i.e. a-b comparison
             key = "{}-{}".format(s1[i], s2[j])
+            cost_substitution = combinations.get(key,cost_substitution)
             
-            # for divisions
+            # for transpositions | i.e a = b-1 and a-1 = b
+            if i and j and s1[i]==s2[j-1] and s1[i-1] == s2[j]:
+                cost_transposition = 1
+
+            # for explosions | i.e. a-bc comparison
             if j <= 0:
-                key_combo = None
+                explosion = None
             else:
                 combo = s2[j-1] + s2[j]
-                key_combo = "{}-{}".format(s1[i], combo)
-                logging.debug("division combination: %s", key_combo)
-            
-            if j <= 1:
-                key_prevcombo = None
-            else:
-                combo = s2[j-2] + s2[j-1]
-                key_prevcombo = "{}-{}".format(s1[i], combo)
-                logging.debug("division prev combination: %s", key_prevcombo)
-            
-            # for contractions
+                explosion = "{}-{}".format(s1[i], combo)
+                cost_explosion = combinations.get(explosion,cost_explosion)
+             
+            # for contractions | i.e. ab-c comparision
             if i <= 0:
-                key_c_combo = None
+                contraction = None
             else:
                 combo = s1[i-1] + s1[i]
-                key_c_combo = "{}-{}".format(combo, s2[j])
-                logging.debug("contraction combination: %s", key_c_combo)
-                
-            # for complex substituions
+                contraction = "{}-{}".format(combo, s2[j])
+                cost_contraction = combinations.get(contraction,cost_contraction)
+
+            # for complex substituions | i.e. ab-cd comparision
             if i <= 0 or j <= 0:
-                key_complex = None
+                complex_substitution = None
             else:
                 combo_j = s2[j-1] + s2[j]
                 combo_i = s1[i-1] + s1[i]
-                key_complex = "{}-{}".format(combo_i, combo_j)
-                logging.debug("complex combination: %s", key_complex)
+                complex_substitution = "{}-{}".format(combo_i, combo_j)
+                cost_complex_substitution = combinations.get(complex_substitution,cost_complex_substitution)
+
+            ##################
+            ### levensthein
+            ##################
+
+            if i == 0 and j == 0:
+                """ Both compared characters are on the first 
+                    position within the equated words. 
+                """
+
+                if s1[i] == s2[j]:
+                    d[(i, j)] = d[(i - 1, j - 1)]
+                else:
+                    d[(i, j)] = d[(i - 1, j - 1)] + cost_substitution            
             
-            if i > 0 and j > 0:
-                logging.debug("i > 0 and j > 0 in source and target")
-                if key_complex in combinations.keys():
-                    logging.debug("valid complex combination")
-                    # cost = cost until the combination + cost of combination
-                    d[(i, j)] = d[(i - 2, j - 2)] + combinations[key_complex] 
-                elif s1[i] == s2[j]:
-                    logging.debug("letters are equal...")
-                    if s1[i-1] == s2[j-1]:
-                        logging.debug("and also previous are equal -> do not form a combination, take diagonal")
-                        d[(i, j)] = d[(i - 1, j - 1)]
-                    elif key_combo in combinations.keys():
-                        logging.debug("and do form a combination, take diagonal")
-                        # take the min. from the previous step, because the total
-                        # cost in case of a combination is, the cost of operation
-                        # on j-1 plus the cost of the combination
-                        # In case of a combination, j counts as if it was j-1,
-                        # but including the combination operation
-                        d[(i, j)] = min(
-                                        d[(i-1, j-1)],
-                                        d[(i-1, j-2)],
-                                        d[(i, j-2)]
-                                        ) + combinations[key_combo]
-                    else:
-                        logging.debug("previous are unequal and not combination")
-                        d[(i, j)] = d[(i - 1, j - 1)]
-                elif key_combo in combinations.keys():
-                    logging.debug("division combination is valid")
-                    # take the min. from the previous step, because the total
-                    # cost in case of a combination is, the cost of operation
-                    # on j-1 plus the cost of the combination
-                    # In case of a combination, j counts as if it was j-1,
-                    # but including the combination operation
-                    d[(i, j)] = min(
-                                    d[(i-1, j-1)],
-                                    d[(i-1, j-2)],
-                                    d[(i, j-2)]
-                                    ) + combinations[key_combo]
-                elif key_c_combo in combinations.keys():
-                    # the cost is computed as for the previous letter in s1,
-                    # but with accounting for the combination
-                    d[(i, j)] = min(
-                                    d[(i-2, j)],
-                                    d[(i-2, j-1)],
-                                    d[(i-1, j-1)]
-                                    ) + combinations[key_c_combo]
-                elif key in combinations.keys():
-                    logging.debug("single letter combination")
-                    d[(i, j)] = min(
-                                    d[(i-1, j-1)],
-                                    d[(i-1, j-2)],
-                                    d[(i, j-2)]
-                                    ) + combinations[key]
+            elif i > 0 or j > 0:
+                """ The compared characters are not on the first 
+                    position of the equated words. 
+                """
+
+                if s1[i] == s2[j]:
+                    """ If characters in source and target are equal,
+                        the diagonal position should be taken. 
+                    """
+
+                    d[(i, j)] = d[(i-1, j-1)]
+                    
                 else:
-                    logging.debug("not equal and not combination")
+                    """ Characters in source and target are dissimmilar,
+                        the minimum count of (i-1,j) + the cost of deletion, 
+                                             (i-1,j-1) + the cost of substitution,
+                                             (i,j-1) + the cost of insertion,
+                                             (i-2,j-2)+ the cost of complex substitution,
+                                             (i-2,j-1) + the cost of contraction,
+                                             (i-1,j-2) + the cost of explosion
+                        should be taken. 
+                    """
+
                     d[(i, j)] = min(
-                           d[(i - 1, j)] + cost_deletion,  # deletion
-                           d[(i, j - 1)] + cost_insertion,  # insertion
-                           d[(i - 1, j - 1)] + cost_substitution,  # substitution
-                           )
+                                    d[(i, j-1)] + cost_insertion,            
+                                    d[(i-1, j-1)] + cost_substitution,
+                                    d[(i-1, j)] + cost_deletion,
+                                    d[(i-2,j-2)] + cost_transposition,
+                                    d[(i-1, j-2)] + cost_explosion,
+                                    d[(i-2, j-1)] + cost_contraction,
+                                    d[(i-2, j-2)] + cost_complex_substitution
+                                    )
             else:
-                logging.debug("the first letters in source or target")
-                
-                if i == 0 and j == 0:
-                    logging.debug("fist letters in both")
-                    if s1[i] == s2[j]:
-                        logging.debug("if equal, take diagonal")
-                        d[(i, j)] = d[(i - 1, j - 1)]
-                    elif key in combinations.keys():
-                        logging.debug("if combination, diagonal plus combination cost")
-                        d[(i, j)] = d[(i - 1, j - 1)] + combinations[key]
-                    else:
-                        # substitution
-                        d[(i, j)] = d[(i - 1, j - 1)] + cost_substitution
-                elif i == 0 or j == 0:
-                    if key_prevcombo in combinations.keys():
-                        logging.debug("division prev combination is valid")
-                        # then the current cost is the cost until j-1 plus
-                        # inserting a new letter
-                        d[(i, j)] = d[(i, j-1)] + cost_insertion
-                    elif key_combo in combinations.keys():
-                        logging.debug("division combination is valid")
-                        # the cost is computed as for the previous letter in s2,
-                        # but with accounting for the combination
-                        d[(i, j)] = min(
-                                        d[(i-1, j-1)],
-                                        d[(i-1, j-2)],
-                                        d[(i, j-2)]
-                                        ) + combinations[key_combo]
-                    elif key_c_combo in combinations.keys():
-                        # the cost is computed as for the previous letter in s1,
-                        # but with accounting for the combination
-                        d[(i, j)] = min(
-                                        d[(i-2, j)],
-                                        d[(i-2, j-1)],
-                                        d[(i-1, j-1)]
-                                        ) + combinations[key_c_combo]
-                    else:
-                        # not a combination
-                        logging.debug("not equal and not combination")
-                        d[(i, j)] = min(
-                               d[(i - 1, j)] + cost_deletion,  # deletion
-                               d[(i, j - 1)] + cost_insertion,  # insertion
-                               d[(i - 1, j - 1)] + cost_substitution,  # substitution
-                               )
-                else:
-                    logging.error("unexpected path: i != 0 and j != 0")
-                    pass
+                pass
+
+    lenstr1 = int(lenstr1)
+    lenstr2 = int(lenstr2)
+    rounding = int(rounding)
+    
     distance = round(d[lenstr1 - 1, lenstr2 - 1], rounding)
-    logging.debug("distance is %s \n", distance)
+    
     return distance
 
 
-def compare_words(word_list, combinations_dict, 
-                  verbose, 
-                  rounding,
-                  case,
-                  cost_substitution, 
-                  cost_deletion, 
-                  cost_insertion):
+def compare_words(word_list, combinations_dict,
+                    verbose,
+                    rounding,
+                    case,
+                    cost_substitution,
+                    cost_deletion,
+                    cost_insertion):
     """Takes a list of dictionaries and compares the words.
     
-    The each dictionary must have at least the following keys:
-    "source"
-    "target"
-    
-    If an expected distance "distance" is provided, it is compared to the 
+    Each dictionary must have at least the following keys:
+        "source"
+        "target"
+    If an expected distance "distance" is provided, it is compared to the
     computed distance and the result printed on the screen.
-    
     Returns word_list with the computed distanced "d_computed" appended to each
     element.
     """
+    
     sample = word_list
     for pair in sample:
         source = pair["source"]
         target = pair["target"]
-        pair["d_computed"] = adapted_damerau_levenshtein_distance(source, target, combinations_dict, 
-                                                                rounding=rounding,
-                                                                case=case,
-                                                                cost_substitution=cost_substitution, 
-                                                                cost_deletion=cost_deletion, 
-                                                                cost_insertion=cost_insertion)
-        if verbose:
-            try:
-                diff = abs(pair["d_computed"] - pair["distance"]) < 0.0001
-                msg = "{}; the distance between {} and {} is {}".format(diff, source,
-                                                                target, pair["d_computed"])
-                print(msg)
-            except KeyError:
-                pass
-        else:
+        pair["d_computed"] = confusion_distance(source,
+                                                target,
+                                                combinations_dict,
+                                                rounding=rounding,
+                                                case=case,
+                                                cost_substitution=cost_substitution,
+                                                cost_deletion=cost_deletion,
+                                                cost_insertion=cost_insertion)
+    if verbose:
+        try:
+            diff = abs(pair["d_computed"] - pair["distance"]) < 0.0001
+            msg = "{}; the distance between {} and {} is {}".format(diff, source,
+                                                            target, pair["d_computed"])
+            print(msg)
+        except KeyError:
             pass
+    else:
+        pass
+    
     return sample
 
 
-def distance_matrix(word_list, combinations_dict, 
+def distance_matrix(word_list, combinations_dict,
                     rounding,
                     case,
-                    cost_substitution, 
-                    cost_deletion, 
+                    cost_substitution,
+                    cost_deletion,
                     cost_insertion):
     """Compares a list of words to each other. Returns a pandas data frame.
     
     https://stackoverflow.com/questions/37428973/string-distance-matrix-in-python
     https://stackoverflow.com/questions/11106536/adding-row-column-headers-to-numpy-matrices
     """
+    
     List1 = word_list
     List2 = word_list
     Matrix = np.zeros((len(List1), len(List2)), dtype=np.float)
-    
+
     for i in range(0, len(List1)):
         for j in range(0, len(List2)):
-            Matrix[i, j] = adapted_damerau_levenshtein_distance(List1[i],
-                                                             List2[j],
-                                                             combinations_dict,
-                                                             rounding=rounding,
-                                                             case=case,
-                                                             cost_substitution=cost_substitution, 
-                                                             cost_deletion=cost_deletion, 
-                                                             cost_insertion=cost_insertion)
+            Matrix[i, j] = confusion_distance(List1[i],
+                                              List2[j],
+                                              combinations_dict,
+                                              rounding=rounding,
+                                              case=case,
+                                              cost_substitution=cost_substitution,
+                                              cost_deletion=cost_deletion,
+                                              cost_insertion=cost_insertion)
+
     return Matrix
 
 
@@ -425,7 +396,7 @@ def main():
         help="Verbose mode (yes/no) (default=yes)",
         default="yes",
         type=str)
-
+    
     args = parser.parse_args()
     args_in = {}
     args_in['conf_table'] = os.path.abspath(args.confusion_table)
@@ -444,37 +415,33 @@ def main():
         args_in['verbose'] = True
     else:
         args_in['verbose'] = False
-
-
+        
+        
     word_list = read_words(args_in['file_in'], as_list=args_in['as_list'])
     conf_table = read_combinations(args_in['conf_table'], args_in['case'])
     
     if args_in['as_list']:
         print("Computing distances...")
-        m = distance_matrix(word_list, conf_table, 
-                            rounding=args_in['rounding'], 
+        m = distance_matrix(word_list, conf_table,
+                            rounding=args_in['rounding'],
                             case=args_in['case'],
-                            cost_deletion=args_in['cd'], 
+                            cost_deletion=args_in['cd'],
                             cost_insertion=args_in['ci'],
                             cost_substitution=args_in['cs'])
         df = pd.DataFrame(m, index=word_list, columns=word_list)
         print("Writing file...")
-        df.to_csv(args_in['file_out'], index=True, header=True, sep=',', 
-                  encoding='utf-8')
+        df.to_csv(args_in['file_out'], index=True, header=True, sep=',',
+                          encoding='utf-8')
     else:
         print("Computing distances...")
-        a = compare_words(word_list, conf_table, 
-                            verbose=args_in['verbose'], 
-                          rounding=args_in['rounding'], 
-                          case=args_in['case'],
-                          cost_deletion=args_in['cd'], 
-                          cost_insertion=args_in['ci'],
-                          cost_substitution=args_in['cs'])
-        print("Writing file...")
-        write_results(a, args_in['file_out'])
-
-
-# if __name__ == '__main__':
-#     main()
+        a = compare_words(word_list, conf_table,
+                            verbose=args_in['verbose'],
+                            rounding=args_in['rounding'],
+                            case=args_in['case'],
+                            cost_deletion=args_in['cd'],
+                            cost_insertion=args_in['ci'],
+                            cost_substitution=args_in['cs'])
+    print("Writing file...")
+    write_results(a, args_in['file_out'])
 
 
