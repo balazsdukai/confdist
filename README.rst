@@ -8,7 +8,7 @@ Description
 
 Compute transcriptional edit distance between pairs of words. Adapted from Damerau-Levensthein distance.
 
-Accompanying article: *Establishing confusion distances to enable Spatial Analysis of textual variants in New Testament manuscripts*
+Accompanying article: *Spatial Analysis of New Testament Textual Emendations utilizing confusion distances*
 
 
 Requirements
